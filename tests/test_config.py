@@ -1,0 +1,17 @@
+# repomind/tests/test_config.py
+import os
+from backend.config import Settings
+
+def test_defaults():
+    s = Settings()
+    assert s.ollama_url == "http://localhost:11434"
+    assert s.embed_model == "nomic-embed-text"
+    assert s.embed_dim == 768
+    assert s.llm_model == "claude-sonnet-4-6"
+    assert s.top_k == 8
+    assert s.db_path == "./repomind.db"
+
+def test_override_via_env(monkeypatch):
+    monkeypatch.setenv("TOP_K", "12")
+    s = Settings()
+    assert s.top_k == 12
