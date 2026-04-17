@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     embed_dim: int = 768
     llm_model: str = "claude-sonnet-4-6"
     top_k: int = 8
-    db_path: str = "./repomind.db"
+    vectorai_host: str = "localhost:50051"
     anthropic_api_key: str = ""
     offline_mode: bool = False
 

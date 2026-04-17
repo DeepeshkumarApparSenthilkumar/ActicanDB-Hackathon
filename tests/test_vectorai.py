@@ -1,42 +1,67 @@
 # repomind/tests/test_vectorai.py
+from unittest.mock import MagicMock, patch, call
 import pytest
-import tempfile
-from backend.db.vectorai import VectorStore
 
 
-def test_insert_and_search():
-    # ignore_cleanup_errors=True: chromadb holds HNSW file handles on Windows
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        store = VectorStore(db_path=tmp, collection="test", dim=4)
-        chunks = [{"file_path": "a.py", "language": "python",
-                   "content": "def foo(): pass", "start_line": 1,
-                   "end_line": 1, "chunk_type": "function"}]
-        embeddings = [[1.0, 0.0, 0.0, 0.0]]
-        store.insert(chunks, embeddings)
-        results = store.search([1.0, 0.0, 0.0, 0.0], top_k=5)
+def make_mock_client(point_count=0):
+    client = MagicMock()
+    client.collections.exists.return_value = False
+    client.points.count.return_value = point_count
+
+    def fake_search(collection, vector, limit):
+        payload = {"file_path": "a.py", "language": "python", "content": "def foo(): pass",
+                   "start_line": 1, "end_line": 1, "chunk_type": "function"}
+        result = MagicMock()
+        result.payload = payload
+        result.score = 0.95
+        return [result]
+
+    client.points.search.side_effect = fake_search
+    return client
+
+
+CHUNKS = [{"file_path": "a.py", "language": "python", "content": "def foo(): pass",
+            "start_line": 1, "end_line": 1, "chunk_type": "function"}]
+EMBEDDINGS = [[0.1] * 768]
+
+
+def test_insert_calls_upsert():
+    with patch("backend.db.vectorai.VectorAIClient", return_value=make_mock_client()):
+        from backend.db import vectorai as vmod
+        vmod._store = None
+        store = vmod.VectorStore(host="localhost:50051", collection="test", dim=768)
+        store.insert(CHUNKS, EMBEDDINGS)
+        store._client.points.upsert.assert_called_once()
+        args = store._client.points.upsert.call_args[0]
+        assert args[0] == "test"
+        assert len(args[1]) == 1
+
+
+def test_search_returns_chunks_with_score():
+    with patch("backend.db.vectorai.VectorAIClient", return_value=make_mock_client(point_count=1)):
+        from backend.db import vectorai as vmod
+        vmod._store = None
+        store = vmod.VectorStore(host="localhost:50051", collection="test2", dim=768)
+        results = store.search([0.1] * 768, top_k=5)
         assert len(results) == 1
         assert results[0]["file_path"] == "a.py"
-        assert "score" in results[0]
+        assert results[0]["score"] == 0.95
 
 
-def test_search_returns_score():
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        store = VectorStore(db_path=tmp, collection="test2", dim=4)
-        chunks = [{"file_path": "b.py", "language": "python",
-                   "content": "def bar(): pass", "start_line": 5,
-                   "end_line": 10, "chunk_type": "function"}]
-        store.insert(chunks, [[0.0, 1.0, 0.0, 0.0]])
-        results = store.search([0.0, 1.0, 0.0, 0.0], top_k=1)
-        assert results[0]["score"] > 0.9
-
-
-def test_clear_removes_data():
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        store = VectorStore(db_path=tmp, collection="test3", dim=4)
-        chunks = [{"file_path": "c.py", "language": "python",
-                   "content": "x = 1", "start_line": 1,
-                   "end_line": 1, "chunk_type": "block"}]
-        store.insert(chunks, [[1.0, 0.0, 0.0, 0.0]])
+def test_clear_recreates_collection():
+    with patch("backend.db.vectorai.VectorAIClient", return_value=make_mock_client()):
+        from backend.db import vectorai as vmod
+        vmod._store = None
+        store = vmod.VectorStore(host="localhost:50051", collection="test3", dim=768)
         store.clear()
-        results = store.search([1.0, 0.0, 0.0, 0.0], top_k=5)
-        assert len(results) == 0
+        store._client.collections.delete.assert_called_once_with("test3")
+        assert store._next_id == 0
+
+
+def test_search_empty_collection_returns_empty():
+    with patch("backend.db.vectorai.VectorAIClient", return_value=make_mock_client(point_count=0)):
+        from backend.db import vectorai as vmod
+        vmod._store = None
+        store = vmod.VectorStore(host="localhost:50051", collection="test4", dim=768)
+        results = store.search([0.1] * 768, top_k=5)
+        assert results == []

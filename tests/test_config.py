@@ -9,7 +9,7 @@ def test_defaults():
     assert s.embed_dim == 768
     assert s.llm_model == "claude-sonnet-4-6"
     assert s.top_k == 8
-    assert s.db_path == "./repomind.db"
+    assert s.vectorai_host == "localhost:50051"
 
 def test_override_via_env(monkeypatch):
     monkeypatch.setenv("TOP_K", "12")
