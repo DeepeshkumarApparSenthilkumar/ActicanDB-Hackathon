@@ -1,5 +1,5 @@
 # repomind/backend/query/llm.py
-import anthropic
+from openai import OpenAI
 from backend.config import get_settings
 from typing import Iterator
 
@@ -21,18 +21,19 @@ def build_prompt(question: str, chunks: list[dict]) -> str:
 
 def stream_answer(question: str, chunks: list[dict]) -> Iterator[str]:
     s = get_settings()
-    client = anthropic.Anthropic(api_key=s.anthropic_api_key)
+    client = OpenAI(api_key=s.nvidia_api_key, base_url=s.nvidia_base_url)
     prompt = build_prompt(question, chunks)
 
-    with client.messages.stream(
+    stream = client.chat.completions.create(
         model=s.llm_model,
         max_tokens=2048,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        for event in stream:
-            if (
-                event.type == "content_block_delta"
-                and event.delta.type == "text_delta"
-            ):
-                yield event.delta.text
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta
+        if delta.content:
+            yield delta.content

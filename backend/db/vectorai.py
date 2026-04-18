@@ -9,6 +9,7 @@ class VectorStore:
         self._collection = collection
         self._dim = dim
         self._client = VectorAIClient(self._host)
+        self._client.connect()
         if not self._client.collections.exists(collection):
             self._client.collections.create(
                 collection,
