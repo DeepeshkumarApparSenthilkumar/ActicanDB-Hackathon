@@ -2,15 +2,15 @@
 import httpx
 from backend.config import get_settings
 
-def embed_single(text: str) -> list[float]:
+def embed_texts(texts: list[str]) -> list[list[float]]:
     s = get_settings()
     resp = httpx.post(
-        f"{s.ollama_url}/api/embeddings",
-        json={"model": s.embed_model, "prompt": text},
-        timeout=30.0,
+        f"{s.ollama_url}/api/embed",
+        json={"model": s.embed_model, "input": texts},
+        timeout=60.0,
     )
     resp.raise_for_status()
-    return resp.json()["embedding"]
+    return resp.json()["embeddings"]
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    return [embed_single(t) for t in texts]
+def embed_single(text: str) -> list[float]:
+    return embed_texts([text])[0]
